@@ -92,7 +92,7 @@ class TransformerPlanner(nn.Module):
         self.query_embed = nn.Embedding(n_waypoints, d_model) #self.enc
         self.net = torch.nn.Sequential(
             torch.nn.Linear(d_model*n_track, 256),
-            torch.nn.Relu(),
+            torch.nn.ReLU(),
             torch.nn.Linear(256, 128),
             torch.nn.ReLU(),
             torch.nn.Linear(128, 64),
@@ -125,15 +125,53 @@ class TransformerPlanner(nn.Module):
 
 
 class CNNPlanner(torch.nn.Module):
+    class ConvBlock(nn.Module):
+        def __init__(self, in_chan, out_chan):
+            super().__init__()
+            self.con1 = torch.nn.Conv2d(in_channels=in_chan, out_channels=out_chan, kernel_size=3, stride=1, padding=1,
+                                        bias=False)
+            self.relu = torch.nn.ReLU()
+            self.norm1 = torch.nn.BatchNorm2d(out_chan)
+            self.con2 = torch.nn.Conv2d(in_channels=out_chan, out_channels=out_chan, kernel_size=3, stride=1, padding=1)
+            self.norm2 = torch.nn.BatchNorm2d(out_chan)
+
+        def forward(self, x):
+            x1 = self.relu(self.norm1((self.con1(x))))
+            x2 = self.relu(self.norm2((self.con2(x1))))
+            return x2
+
     def __init__(
         self,
         n_waypoints: int = 3,
+        channel_block= [16, 32, 64]
     ):
         super().__init__()
-
         self.n_waypoints = n_waypoints
+        self.register_buffer("input_mean", torch.as_tensor(INPUT_MEAN))
+        self.register_buffer("input_std", torch.as_tensor(INPUT_STD))
+        self.down_conv = nn.ModuleList()
+        self.up_conv = nn.ModuleList()
+        self.pool = torch.nn.MaxPool2d(kernel_size=2, stride=2)
+        c1 = n_waypoints
+        for i in channel_block:
+            # we first run it through the down convolution blocks
+            self.down_conv.append(self.ConvBlock(in_chan=c1, out_chan=i))
+            in_chan = i
 
-    def forward(self, image: torch.Tensor, **kwargs) -> torch.Tensor:
+
+        # now base layer
+        self.base = self.ConvBlock(channel_block[-1], channel_block[-1]*2)
+
+        for j in reversed(channel_block):
+            # now to go back up
+            self.up_conv.append(nn.ConvTranspose2d(j * 2, j, kernel_size=2, stride=2))
+            self.up_conv.append(self.ConvBlock(in_chan=j * 2, out_chan=j))
+
+        # now to create the outputs
+        self.logit_con = torch.nn.Conv2d(in_channels=j, out_channels=self.n_waypoints, kernel_size=1)
+
+
+def forward(self, image: torch.Tensor, **kwargs) -> torch.Tensor:
         """
         Args:
             image (torch.FloatTensor): shape (b, 3, h, w) and vals in [0, 1]
@@ -141,7 +179,25 @@ class CNNPlanner(torch.nn.Module):
         Returns:
             torch.FloatTensor: future waypoints with shape (b, n, 2)
         """
-        raise NotImplementedError
+        skip_connections = []
+        for down in self.down_conv:  # the down cov path
+            x = down(image)
+            skip_connections.append(x)
+            x = self.pool(x)
+            # print(skip_connections)
+
+        x = self.base(x)  # the base path
+        skip_connections = skip_connections[::-1]
+
+        for idx in range(0, len(self.up_conv), 2):  # the up convolution
+            x = self.up_conv[idx](x)
+            # print(skip_connections[idx // 2])
+            skip_connection = skip_connections[idx // 2]
+            concat_skip = torch.cat((skip_connection, x), dim=1)
+            x = self.up_conv[idx + 1](concat_skip)
+
+        # the final output layers
+        return self.logit_con(x)
 
 
 MODEL_FACTORY = {

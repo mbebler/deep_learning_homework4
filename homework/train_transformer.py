@@ -4,7 +4,8 @@ Usage:
 """
 import numpy as np
 import torch
-
+from datetime import datetime
+from pathlib import Path
 import torch.utils.tensorboard as tb
 
 from .models import TransformerPlanner, save_model, calculate_model_size_mb
@@ -48,7 +49,7 @@ def train_trans(
 
 
     # create the loss function and optimizer
-    loss_func = torch.nn.L1loss()
+    loss_func = torch.nn.L1Loss()
     optim = torch.optim.SGD(net.parameters(), lr=lr)
     train_metrics = PlannerMetric()
     val_metrics = PlannerMetric()
