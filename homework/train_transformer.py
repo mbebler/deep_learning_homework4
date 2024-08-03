@@ -7,7 +7,7 @@ import torch
 
 import torch.utils.tensorboard as tb
 
-from .models import MLPPlanner, save_model, calculate_model_size_mb
+from .models import TransformerPlanner, save_model, calculate_model_size_mb
 from .metrics import PlannerMetric
 from .datasets.road_dataset import load_data
 
@@ -22,7 +22,7 @@ Recall that a training pipeline includes:
 * Logging + saving your model (use the provided `save_model`)
 '''
 
-def train_MLP(
+def train_trans(
         exp_dir: str = "logs",
         num_epoch: int = 50,
         lr: float = 1e-3,
@@ -43,9 +43,9 @@ def train_MLP(
     val_data = load_data("deep_learning_homework4/road_data/val", shuffle=False)
 
     # load the model
-    net = MLPPlanner()
+    net = TransformerPlanner()
     net.cuda()
-    net.train()
+
 
     # create the loss function and optimizer
     loss_func = torch.nn.L1loss()

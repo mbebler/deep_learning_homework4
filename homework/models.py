@@ -42,15 +42,15 @@ class MLPPlanner(nn.Module):
         self.n_track = n_track
         self.n_waypoints = n_waypoints
         layers = nn.ModuleList()
-        c1 = 8
-
-        for i in range(3):  # run through the block three times
+        c1 = n_track
+        for _ in range(3):  # run through the block three times
             c2 = 2 * c1
             layers.append(self.MLP_Block(c1, c2))
             c1 = c2
 
         # final layer for the output - one output for everything
-        layers.append(nn.Linear(c2, 1))
+        layers.append(nn.Linear(c2, n_waypoints))
+        self.model = nn.Sequential(*layers)
 
     def forward(
             self,
@@ -88,7 +88,17 @@ class TransformerPlanner(nn.Module):
         self.n_track = n_track
         self.n_waypoints = n_waypoints
 
-        self.query_embed = nn.Embedding(n_waypoints, d_model)
+        #using the basic model from week 6 lectures
+        self.query_embed = nn.Embedding(n_waypoints, d_model) #self.enc
+        self.net = torch.nn.Sequential(
+            torch.nn.Linear(d_model*n_track, 256),
+            torch.nn.Relu(),
+            torch.nn.Linear(256, 128),
+            torch.nn.ReLU(),
+            torch.nn.Linear(128, 64),
+            torch.nn.ReLU(),
+            torch.nn.Linear(64, n_waypoints)
+        )
 
     def forward(
         self,
@@ -111,7 +121,7 @@ class TransformerPlanner(nn.Module):
         Returns:
             torch.Tensor: future waypoints with shape (b, n_waypoints, 2)
         """
-        raise NotImplementedError
+        return self.net(self.query_embed(bev_track_left + bev_track_right))
 
 
 class CNNPlanner(torch.nn.Module):
