@@ -137,6 +137,7 @@ class CNNPlanner(torch.nn.Module):
 
         def forward(self, x):
             x1 = self.relu(self.norm1((self.con1(x))))
+            #print(x1.shape)
             x2 = self.relu(self.norm2((self.con2(x1))))
             return x2
 
@@ -156,7 +157,7 @@ class CNNPlanner(torch.nn.Module):
         for i in channel_block:
             # we first run it through the down convolution blocks
             self.down_conv.append(self.ConvBlock(in_chan=c1, out_chan=i))
-            in_chan = i
+            c1 = i
 
 
         # now base layer
@@ -171,7 +172,7 @@ class CNNPlanner(torch.nn.Module):
         self.logit_con = torch.nn.Conv2d(in_channels=j, out_channels=self.n_waypoints, kernel_size=1)
 
 
-def forward(self, image: torch.Tensor, **kwargs) -> torch.Tensor:
+    def forward(self, image: torch.Tensor, **kwargs) -> torch.Tensor:
         """
         Args:
             image (torch.FloatTensor): shape (b, 3, h, w) and vals in [0, 1]
