@@ -38,9 +38,9 @@ def train_MLP(
     logger = tb.SummaryWriter(log_dir)
 
     # loading the data
-    train_data = load_data("DL_hmwk_4/road_data/train", shuffle=True,
+    train_data = load_data("deep_learning_homework4/road_data/train", shuffle=True,
                            batch_size=batch_size)
-    val_data = load_data("DL_hmwk_4/road_data/val", shuffle=False)
+    val_data = load_data("deep_learning_homework4/road_data/val", shuffle=False)
 
     # load the model
     net = MLPPlanner()
@@ -50,7 +50,8 @@ def train_MLP(
     # create the loss function and optimizer
     loss_func = torch.nn.CrossEntropyLoss()
     optim = torch.optim.SGD(net.parameters(), lr=lr)
-
+    train_metrics = PlannerMetric()
+    val_metrics = PlannerMetric()
     global_step = 0
 
     # now to train the model
@@ -58,36 +59,51 @@ def train_MLP(
       # print(epoch)
       train_accuracy = []
       net.train()
-      for DATA in train_data:
+      for data in train_data:
         # input the data
-
+        left_bev = data["bev_track_left"].cuda()
+        right_bev = data["bev_track_right"].cuda()
+        way = data["waypoints"].cuda()
+        way_mask = data["waypoints_mask"].cuda()
         # find the model
-        output = net(data)
+        output = net(bev_track_left = left_bev, bev_track_right = right_bev)
         # calculate the loss, add to the accuracy tracker
+        new_loss = loss_func(output, way)
 
         # now update the model
         optim.zero_grad()
-        loss.backward()
+        loss_func.backward()
         optim.step()
         # add the individual loss to the logger
-
+        train_metrics.add(output, way, way_mask)
+        logger.add_scalar("train/loss", new_loss, global_step)
         global_step += 1
 
       # now we add the overall accuracy to the logger
-
+      train_metrics2 = train_metrics.compute()
+      logger.add_scalar("train/accuracy-long", np.mean(train_metrics2["longitudinal_error"]), global_step=epoch)
+      logger.add_scalar("train/accuracy-lat", np.mean(train_metrics2['lateral_error']), global_step=epoch)
 
       # now we want to look at the validation data
       net.eval()
       val_accuracy = []
-      for DATA in val_data:
-
+      for data in val_data:
+        # input the data
+        left_bev = data["bev_track_left"].cuda()
+        right_bev = data["bev_track_right"].cuda()
+        way = data["waypoints"].cuda()
+        way_mask = data["waypoints_mask"].cuda()
+        # find the model
         with torch.inference_mode():
-          output = net(data)
+          output = net(bev_track_left = left_bev, bev_track_right = right_bev)
           # print((net.predict(x = data) == label).float().mean())
-        #log the val accuracy
+          val_metrics.add(output, way, way_mask)
+
 
         #log the mean val accuracy in logger
-        logger.add_scalar("val/accuracy", np.mean(val_accuracy), global_step=epoch)
+        val_metrics2 = val_metrics.compute()
+        logger.add_scalar("val/accuracy-long", np.mean(val_metrics2["longitudinal_error"]), global_step=epoch)
+        logger.add_scalar("val/accuracy-lat", np.mean(val_metrics2['lateral_error']), global_step=epoch)
 
       logger.flush()
 

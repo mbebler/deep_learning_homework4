@@ -9,7 +9,7 @@ from .grader import Case, Grader
 from .metrics import PlannerMetric
 
 # A hidden test split will be used for grading
-ROAD_DATA_SPLIT = "road_data/val"
+ROAD_DATA_SPLIT = "deep_learning_homework4/road_data/val"
 
 
 def normalized_score(val: float, low: float, high: float, lower_is_better=False):

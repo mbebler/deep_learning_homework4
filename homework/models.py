@@ -21,15 +21,16 @@ class MLPPlanner(nn.Module):
                 self.skip = nn.Linear(in_channels, out_channels)
             else:
                 self.skip = nn.Identity()
+
         def forward(self, x):
             x1 = self.relu(self.batch1(self.lin1(x)))
             x2 = self.relu(self.batch2(self.lin2(x1)))
             return x2 + self.skip(x)
 
     def __init__(
-        self,
-        n_track: int = 10,
-        n_waypoints: int = 3,
+            self,
+            n_track: int = 10,
+            n_waypoints: int = 3,
     ):
         """
         Args:
@@ -40,14 +41,22 @@ class MLPPlanner(nn.Module):
 
         self.n_track = n_track
         self.n_waypoints = n_waypoints
-        layers = []
+        layers = nn.ModuleList()
+        c1 = 8
 
+        for i in range(3):  # run through the block three times
+            c2 = 2 * c1
+            layers.append(self.MLP_Block(c1, c2))
+            c1 = c2
+
+        # final layer for the output - one output for everything
+        layers.append(nn.Linear(c2, 1))
 
     def forward(
-        self,
-        bev_track_left: torch.Tensor,
-        bev_track_right: torch.Tensor,
-        **kwargs,
+            self,
+            bev_track_left: torch.Tensor,
+            bev_track_right: torch.Tensor,
+            **kwargs,
     ) -> torch.Tensor:
         """
         Predicts waypoints (b, n_waypoints, 2)
