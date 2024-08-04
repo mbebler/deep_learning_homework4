@@ -24,9 +24,9 @@ class MLPPlanner(nn.Module):
 
         def forward(self, x):
             x1 = self.relu(self.batch1(self.lin1(x)))
-            print(x1.shape)
+            # print(x1.shape)
             x2 = self.relu(self.batch2(self.lin2(x1)))
-            print(x2.shape)
+            # print(x2.shape)
             return x2 + self.skip(x)
 
     def __init__(
@@ -44,7 +44,7 @@ class MLPPlanner(nn.Module):
         self.n_track = n_track
         self.n_waypoints = n_waypoints
         layers = nn.ModuleList()
-        c1 = n_track
+        c1 = 4*self.n_track #when we flatten, we pass in 2 left and 2 y values
         for _ in range(3):  # run through the block three times
             c2 = 2 * c1
             layers.append(self.MLP_Block(c1, c2))
@@ -75,10 +75,11 @@ class MLPPlanner(nn.Module):
         Returns:
             torch.Tensor: future waypoints with shape (b, n_waypoints, 2)
         """
-        x = nn.cat((bev_track_left, bev_track_right), dim=1) #concat to feed in
+        x = torch.cat((bev_track_left, bev_track_right), dim=1).flatten(start_dim=1) #concat to feed in
         y = self.model(x)
         y2 = y.view(x.shape[0], self.n_waypoints, 2) # reconfigure into the correct size
         return y2
+
 
 
 class TransformerPlanner(nn.Module):

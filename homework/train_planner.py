@@ -47,13 +47,15 @@ def train(
     # load the model
     if vers:
         net = MLPPlanner()
+        print("MLP")
     else:
         net = TransformerPlanner()
+        print("Transformer")
     net.cuda()
     net.train()
 
     # create the loss function and optimizer
-    loss_func = torch.nn.L1Loss()
+    loss_func = torch.nn.MSELoss()
     optim = torch.optim.SGD(net.parameters(), lr=lr)
     train_metrics = PlannerMetric()
     val_metrics = PlannerMetric()
@@ -67,7 +69,9 @@ def train(
       for data in train_data:
         # input the data
         left_bev = data["bev_track_left"].cuda()
+        # print(left_bev.shape)
         right_bev = data["bev_track_right"].cuda()
+        # print(right_bev.shape)
         way = data["waypoints"].cuda()
         way_mask = data["waypoints_mask"].cuda()
         # find the model
@@ -77,7 +81,7 @@ def train(
         logger.add_scalar("train/loss", new_loss.item(), global_step)
         # now update the model
         optim.zero_grad()
-        loss_func.backward()
+        new_loss.backward()
         optim.step()
         # add the individual loss to the logger
         train_metrics.add(output, way, way_mask)
@@ -114,5 +118,6 @@ def train(
 
         # now we save models every so often
       if epoch % 10 == 0:
+        print(epoch)
         save_model(net)
         print(calculate_model_size_mb(net))
