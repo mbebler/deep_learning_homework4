@@ -127,7 +127,10 @@ class TransformerPlanner(nn.Module):
         Returns:
             torch.Tensor: future waypoints with shape (b, n_waypoints, 2)
         """
-        return self.net(self.query_embed(bev_track_left + bev_track_right))
+        x = torch.cat((bev_track_left, bev_track_right), dim=1).flatten(start_dim=1)  # concat to feed in
+        y = self.net(self.query_embed(x))
+        y2 = y.view(x.shape[0], self.n_waypoints, 2)  # reconfigure into the correct size
+        return y2
 
 
 class CNNPlanner(torch.nn.Module):
