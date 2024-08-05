@@ -81,36 +81,63 @@ class MLPPlanner(nn.Module):
         return y2
 
 
-
 class TransformerPlanner(nn.Module):
+    class TransformerLayer(torch.nn.Module):
+        def __init__(self, embed_dim, heads):
+            super().__init__()
+            # first we have the self attention
+            self.self_att = torch.nn.MultiheadAttention(embed_dim, heads, batch_first=True)
+            # then, we add an MLP
+            self.mlp = torch.nn.Sequential(
+                torch.nn.Linear(embed_dim, 4 * embed_dim),
+                torch.nn.BatchNorm1d(embed_dim * 4),
+                torch.nn.ReLU(),
+                torch.nn.Linear(4 * embed_dim, embed_dim),
+                torch.nn.BatchNorm1d(embed_dim),
+                torch.nn.ReLU(),
+                torch.nn.Linear(embed_dim, 4 * embed_dim),
+                torch.nn.BatchNorm1d(embed_dim * 4),
+                torch.nn.ReLU(),
+                torch.nn.Linear(4 * embed_dim, embed_dim),
+                torch.nn.BatchNorm1d(embed_dim),
+            )
+            # then 2 normalizations
+            self.norm1 = torch.nn.LayerNorm(embed_dim)
+            self.norm2 = torch.nn.LayerNorm(embed_dim)
+
+        def forward(self, x):
+            x_norm = self.norm1(
+                x)  # could add in a cross attention layer with encoder/decoder architecture but not absolutely necessary
+            x = x + self.self_att(x_norm, x_norm, x_norm)[
+                0]  # attention outputs layers + weights, but we only want the layer solution
+            x_norm2 = self.norm2(x)
+            x = x + self.mlp(x_norm2)
+            return x
+
     def __init__(
-        self,
-        n_track: int = 10,
-        n_waypoints: int = 3,
-        d_model: int = 64,
+            self,
+            n_track: int = 10,
+            n_waypoints: int = 3,
+            d_model: int = 64,
     ):
         super().__init__()
 
         self.n_track = n_track
         self.n_waypoints = n_waypoints
 
-        #using the basic model from week 6 lectures
-        self.query_embed = nn.Embedding(n_waypoints, d_model) #self.enc
-        self.net = torch.nn.Sequential(
-            torch.nn.Linear(d_model*n_track, 256),
-            torch.nn.ReLU(),
-            torch.nn.Linear(256, 128),
-            torch.nn.ReLU(),
-            torch.nn.Linear(128, 64),
-            torch.nn.ReLU(),
-            torch.nn.Linear(64, n_waypoints)
+        # using the basic model from week 6 lectures
+
+        layers = nn.ModuleList()
+        self.layers = torch.nn.Sequential(
+            *[self.TransformerLayer(n_track * 4, 4) for _ in range(d_model)]
         )
+        self.layers.append(nn.Linear(4 * n_track, n_waypoints * 2))
 
     def forward(
-        self,
-        bev_track_left: torch.Tensor,
-        bev_track_right: torch.Tensor,
-        **kwargs,
+            self,
+            bev_track_left: torch.Tensor,
+            bev_track_right: torch.Tensor,
+            **kwargs,
     ):
         """
         Predicts waypoints (b, n_waypoints, 2)
@@ -128,8 +155,8 @@ class TransformerPlanner(nn.Module):
             torch.Tensor: future waypoints with shape (b, n_waypoints, 2)
         """
         x = torch.cat((bev_track_left, bev_track_right), dim=1).flatten(start_dim=1)  # concat to feed in
-        y = self.net(self.query_embed(x))
-        y2 = y.view(x.shape[0], self.n_waypoints, 2)  # reconfigure into the correct size
+        y = self.layers(x)
+        y2 = y.view(y.shape[0], self.n_waypoints, 2)  # reconfigure into the correct size
         return y2
 
 

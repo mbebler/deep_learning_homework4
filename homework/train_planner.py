@@ -25,11 +25,10 @@ Recall that a training pipeline includes:
 
 def train(
         exp_dir: str = "logs",
-        num_epoch: int = 50,
+        num_epoch: int = 21,
         lr: float = 1e-3,
         batch_size: int = 32,
         seed: int = 2024,
-        vers: bool = True
 ):
     # set random seed so each run is deterministic
     torch.manual_seed(seed)
@@ -45,12 +44,12 @@ def train(
     val_data = load_data("deep_learning_homework4/road_data/val", shuffle=False)
 
     # load the model
-    if vers:
-        net = MLPPlanner()
-        print("MLP")
-    else:
-        net = TransformerPlanner()
-        print("Transformer")
+    #if vers:
+        #net = MLPPlanner()
+        #print("MLP")
+    #else:
+    net = TransformerPlanner()
+    print("Transformer")
     net.cuda()
     net.train()
 
@@ -76,6 +75,8 @@ def train(
         way_mask = data["waypoints_mask"].cuda()
         # find the model
         output = net(bev_track_left = left_bev, bev_track_right = right_bev)
+        # print(output.shape)
+        # print(way.shape)
         # calculate the loss, add to the accuracy tracker
         new_loss = loss_func(output, way)
         logger.add_scalar("train/loss", new_loss.item(), global_step)
