@@ -89,16 +89,16 @@ class TransformerPlanner(nn.Module):
             self.self_att = torch.nn.MultiheadAttention(embed_dim, heads, batch_first=True)
             # then, we add an MLP
             self.mlp = torch.nn.Sequential(
-                torch.nn.Linear(embed_dim, 4 * embed_dim),
-                torch.nn.BatchNorm1d(embed_dim * 4),
+                torch.nn.Linear(embed_dim, 2 * embed_dim),
+                torch.nn.BatchNorm1d(embed_dim * 2),
                 torch.nn.ReLU(),
-                torch.nn.Linear(4 * embed_dim, embed_dim),
-                torch.nn.BatchNorm1d(embed_dim),
+                torch.nn.Linear(2 * embed_dim, 4 *embed_dim),
+                torch.nn.BatchNorm1d(4*embed_dim),
                 torch.nn.ReLU(),
-                torch.nn.Linear(embed_dim, 4 * embed_dim),
-                torch.nn.BatchNorm1d(embed_dim * 4),
+                torch.nn.Linear(4*embed_dim, 2 * embed_dim),
+                torch.nn.BatchNorm1d(embed_dim * 2),
                 torch.nn.ReLU(),
-                torch.nn.Linear(4 * embed_dim, embed_dim),
+                torch.nn.Linear(2 * embed_dim, embed_dim),
                 torch.nn.BatchNorm1d(embed_dim),
             )
             # then 2 normalizations
@@ -129,9 +129,9 @@ class TransformerPlanner(nn.Module):
 
         layers = nn.ModuleList()
         self.layers = torch.nn.Sequential(
-            *[self.TransformerLayer(n_track * 4, 4) for _ in range(d_model)]
+            *[self.TransformerLayer(n_track*4, 5) for _ in range(d_model)]
         )
-        self.layers.append(nn.Linear(4 * n_track, n_waypoints * 2))
+        self.layers.append(nn.Linear(4*n_track, n_waypoints * 2))
 
     def forward(
             self,
