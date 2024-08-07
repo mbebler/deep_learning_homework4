@@ -111,7 +111,7 @@ def train(
       #log the mean val accuracy in logger
       val_metrics2 = val_metrics.compute()
       logger.add_scalar("val/accuracy-long", np.mean(val_metrics2["longitudinal_error"]), global_step=epoch)
-      print(np.mean(val_metrics2["longitudinal_error"]),np.mean(val_metrics2['lateral_error']))
+      print(np.mean(val_metrics2['lateral_error']),np.mean(val_metrics2["longitudinal_error"]))
       logger.add_scalar("val/accuracy-lat", np.mean(val_metrics2['lateral_error']), global_step=epoch)
 
 

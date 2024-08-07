@@ -36,6 +36,7 @@ def train(
 
     # directory with timestamp to save tensorboard logs and model checkpoints
     log_dir = Path(exp_dir) / f"{datetime.now().strftime('%m%d_%H%M%S')}"
+    print(f"{datetime.now().strftime('%m%d_%H%M%S')}")
     logger = tb.SummaryWriter(log_dir)
 
     # loading the data
@@ -63,7 +64,8 @@ def train(
     # now to train the model
     for epoch in range(num_epoch):
       # print(epoch)
-
+      train_metrics.reset()
+      val_metrics.reset()
       net.train()
       for data in train_data:
         # input the data
@@ -110,10 +112,11 @@ def train(
           val_metrics.add(output, way, way_mask)
 
 
-        #log the mean val accuracy in logger
-        val_metrics2 = val_metrics.compute()
-        logger.add_scalar("val/accuracy-long", np.mean(val_metrics2["longitudinal_error"]), global_step=epoch)
-        logger.add_scalar("val/accuracy-lat", np.mean(val_metrics2['lateral_error']), global_step=epoch)
+      #log the mean val accuracy in logger
+      val_metrics2 = val_metrics.compute()
+      logger.add_scalar("val/accuracy-long", np.mean(val_metrics2["longitudinal_error"]), global_step=epoch)
+      logger.add_scalar("val/accuracy-lat", np.mean(val_metrics2['lateral_error']), global_step=epoch)
+      print(np.mean(val_metrics2['lateral_error']), np.mean(val_metrics2["longitudinal_error"]))
 
       logger.flush()
 
