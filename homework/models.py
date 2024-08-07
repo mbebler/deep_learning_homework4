@@ -44,14 +44,14 @@ class MLPPlanner(nn.Module):
         self.n_track = n_track
         self.n_waypoints = n_waypoints
         layers = nn.ModuleList()
-        c1 = 4*self.n_track #when we flatten, we pass in 2 left and 2 y values
+        c1 = 4 * self.n_track  # when we flatten, we pass in 2 left and 2 y values
         for _ in range(3):  # run through the block three times
             c2 = 2 * c1
             layers.append(self.MLP_Block(c1, c2))
             c1 = c2
 
         # final layer for the output - one output for everything
-        layers.append(nn.Linear(c2, n_waypoints*2))
+        layers.append(nn.Linear(c2, n_waypoints * 2))
         self.model = nn.Sequential(*layers)
 
     def forward(
@@ -75,9 +75,9 @@ class MLPPlanner(nn.Module):
         Returns:
             torch.Tensor: future waypoints with shape (b, n_waypoints, 2)
         """
-        x = torch.cat((bev_track_left, bev_track_right), dim=1).flatten(start_dim=1) #concat to feed in
+        x = torch.cat((bev_track_left, bev_track_right), dim=1).flatten(start_dim=1)  # concat to feed in
         y = self.model(x)
-        y2 = y.view(x.shape[0], self.n_waypoints, 2) # reconfigure into the correct size
+        y2 = y.view(x.shape[0], self.n_waypoints, 2)  # reconfigure into the correct size
         return y2
 
 
@@ -89,17 +89,12 @@ class TransformerPlanner(nn.Module):
             self.self_att = torch.nn.MultiheadAttention(embed_dim, heads, batch_first=True)
             # then, we add an MLP
             self.mlp = torch.nn.Sequential(
-                torch.nn.Linear(embed_dim, 2 * embed_dim),
-                torch.nn.BatchNorm1d(embed_dim * 2),
+                torch.nn.Linear(embed_dim, 4 * embed_dim),
+                torch.nn.BatchNorm1d(embed_dim * 4),
                 torch.nn.ReLU(),
-                torch.nn.Linear(2 * embed_dim, 4 *embed_dim),
-                torch.nn.BatchNorm1d(4*embed_dim),
-                torch.nn.ReLU(),
-                torch.nn.Linear(4*embed_dim, 2 * embed_dim),
-                torch.nn.BatchNorm1d(embed_dim * 2),
-                torch.nn.ReLU(),
-                torch.nn.Linear(2 * embed_dim, embed_dim),
+                torch.nn.Linear(4 * embed_dim, embed_dim),
                 torch.nn.BatchNorm1d(embed_dim),
+                torch.nn.ReLU(),
             )
             # then 2 normalizations
             self.norm1 = torch.nn.LayerNorm(embed_dim)
@@ -129,9 +124,11 @@ class TransformerPlanner(nn.Module):
 
         layers = nn.ModuleList()
         self.layers = torch.nn.Sequential(
-            *[self.TransformerLayer(n_track*4, 5) for _ in range(d_model)]
+            *[self.TransformerLayer(n_track * 4, 5) for _ in range(d_model)],
+            *[self.TransformerLayer(n_track * 4, 8) for _ in range(d_model)],
+            *[self.TransformerLayer(n_track * 4, 10) for _ in range(d_model)]
         )
-        self.layers.append(nn.Linear(4*n_track, n_waypoints * 2))
+        self.layers.append(nn.Linear(4 * n_track, n_waypoints * 2))
 
     def forward(
             self,
@@ -161,52 +158,48 @@ class TransformerPlanner(nn.Module):
 
 
 class CNNPlanner(torch.nn.Module):
-    class ConvBlock(nn.Module):
-        def __init__(self, in_chan, out_chan):
+    class Block(nn.Module):
+        def __init__(self, in_chan=3, out_chan=3):
             super().__init__()
-            self.con1 = torch.nn.Conv2d(in_channels=in_chan, out_channels=out_chan, kernel_size=3, stride=1, padding=1,
-                                        bias=False)
+            self.con1 = torch.nn.Conv2d(in_channels=in_chan, out_channels=out_chan, kernel_size=3, stride=1, padding=1)
             self.relu = torch.nn.ReLU()
-            self.norm1 = torch.nn.BatchNorm2d(out_chan)
-            self.con2 = torch.nn.Conv2d(in_channels=out_chan, out_channels=out_chan, kernel_size=3, stride=1, padding=1)
-            self.norm2 = torch.nn.BatchNorm2d(out_chan)
+            self.norm = torch.nn.BatchNorm2d(out_chan)
+            self.con2 = torch.nn.Conv2d(in_channels=out_chan, out_channels=out_chan, kernel_size=1, stride=1)
+            if in_chan == out_chan:
+                self.skip = torch.nn.Identity()
+            else:
+                self.skip = torch.nn.Conv2d(in_chan, out_chan, 1)
 
         def forward(self, x):
-            x1 = self.relu(self.norm1((self.con1(x))))
-            #print(x1.shape)
-            x2 = self.relu(self.norm2((self.con2(x1))))
-            return x2
+            x1 = self.norm(self.relu(self.con1(x)))
+            # print(x1.shape)
+            x2 = self.relu(self.con2(x1))
+            # print(x2.shape)
+            return x2 + self.skip(x)
 
     def __init__(
-        self,
-        n_waypoints: int = 3,
-        channel_block= [16, 32, 64]
+            self,
+            n_waypoints: int = 3
     ):
         super().__init__()
         self.n_waypoints = n_waypoints
-        self.register_buffer("input_mean", torch.as_tensor(INPUT_MEAN))
-        self.register_buffer("input_std", torch.as_tensor(INPUT_STD))
-        self.down_conv = nn.ModuleList()
-        self.up_conv = nn.ModuleList()
-        self.pool = torch.nn.MaxPool2d(kernel_size=2, stride=2)
-        c1 = n_waypoints
-        for i in channel_block:
-            # we first run it through the down convolution blocks
-            self.down_conv.append(self.ConvBlock(in_chan=c1, out_chan=i))
-            c1 = i
-
-
-        # now base layer
-        self.base = self.ConvBlock(channel_block[-1], channel_block[-1]*2)
-
-        for j in reversed(channel_block):
-            # now to go back up
-            self.up_conv.append(nn.ConvTranspose2d(j * 2, j, kernel_size=2, stride=2))
-            self.up_conv.append(self.ConvBlock(in_chan=j * 2, out_chan=j))
-
-        # now to create the outputs
-        self.logit_con = torch.nn.Conv2d(in_channels=j, out_channels=self.n_waypoints, kernel_size=1)
-
+        c1 = 8
+        # first layer
+        layers = [
+            torch.nn.Conv2d(3, out_channels=c1, kernel_size=7, stride=2, padding=3),
+            torch.nn.ReLU(),
+        ]
+        # for the blocks
+        for _ in range(4):  # 6 total layers
+            c2 = 2 * c1
+            layers.append(self.Block(c1, c2))
+            c1 = c2
+        layers.append(torch.nn.Dropout(p=0.5))
+        self.model = torch.nn.Sequential(*layers)
+        # for the last layer
+        # self.flatten = torch.nn.Flatten(start_dim=1, end_dim=-1)
+        final_feat = (2 ** 4) * 8
+        self.end = torch.nn.Linear(in_features=final_feat, out_features=n_waypoints * 2)
 
     def forward(self, image: torch.Tensor, **kwargs) -> torch.Tensor:
         """
@@ -216,38 +209,26 @@ class CNNPlanner(torch.nn.Module):
         Returns:
             torch.FloatTensor: future waypoints with shape (b, n, 2)
         """
-        skip_connections = []
-        for down in self.down_conv:  # the down cov path
-            x = down(image)
-            skip_connections.append(x)
-            x = self.pool(x)
-            # print(skip_connections)
 
-        x = self.base(x)  # the base path
-        skip_connections = skip_connections[::-1]
+        out = self.model(image)
+        out = torch.mean(out, dim=(2, 3))
+        out = self.end(out)
+        out = out.view(image.shape[0], self.n_waypoints, 2)
 
-        for idx in range(0, len(self.up_conv), 2):  # the up convolution
-            x = self.up_conv[idx](x)
-            # print(skip_connections[idx // 2])
-            skip_connection = skip_connections[idx // 2]
-            concat_skip = torch.cat((skip_connection, x), dim=1)
-            x = self.up_conv[idx + 1](concat_skip)
-
-        # the final output layers
-        return self.logit_con(x)
+        return out
 
 
 MODEL_FACTORY = {
     "mlp_planner": MLPPlanner,
     "transformer_planner": TransformerPlanner,
-    "cnn_planner": CNNPlanner,
+    "cnn_planner": deep_learning_homework4.homework.models.CNNPlanner,
 }
 
 
 def load_model(
-    model_name: str,
-    with_weights: bool = False,
-    **model_kwargs,
+        model_name: str,
+        with_weights: bool = False,
+        **model_kwargs,
 ) -> torch.nn.Module:
     """
     Called by the grader to load a pre-trained model by name
