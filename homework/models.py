@@ -190,15 +190,15 @@ class CNNPlanner(torch.nn.Module):
             torch.nn.ReLU(),
         ]
         # for the blocks
-        for _ in range(4):  # 6 total layers
+        for _ in range(6):  # 3 total layers
             c2 = 2 * c1
             layers.append(self.Block(c1, c2))
             c1 = c2
-        layers.append(torch.nn.Dropout(p=0.5))
+        #layers.append(torch.nn.Dropout(p=0.5))
         self.model = torch.nn.Sequential(*layers)
         # for the last layer
         # self.flatten = torch.nn.Flatten(start_dim=1, end_dim=-1)
-        final_feat = (2 ** 4) * 8
+        final_feat = (2 ** 6) * 8
         self.end = torch.nn.Linear(in_features=final_feat, out_features=n_waypoints * 2)
 
     def forward(self, image: torch.Tensor, **kwargs) -> torch.Tensor:
@@ -217,11 +217,10 @@ class CNNPlanner(torch.nn.Module):
 
         return out
 
-
 MODEL_FACTORY = {
     "mlp_planner": MLPPlanner,
     "transformer_planner": TransformerPlanner,
-    "cnn_planner": deep_learning_homework4.homework.models.CNNPlanner,
+    "cnn_planner": CNNPlanner,
 }
 
 

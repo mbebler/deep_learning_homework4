@@ -24,7 +24,7 @@ Recall that a training pipeline includes:
 '''
 
 def train(
-        exp_dir: str = "logs",
+        exp_dir: str = "log",
         num_epoch: int = 50,
         lr: float = 1e-3,
         batch_size: int = 32,
@@ -36,6 +36,7 @@ def train(
 
     # directory with timestamp to save tensorboard logs and model checkpoints
     log_dir = Path(exp_dir) / f"{datetime.now().strftime('%m%d_%H%M%S')}"
+    print(f"{datetime.now().strftime('%m%d_%H%M%S')}")
     logger = tb.SummaryWriter(log_dir)
 
     # loading the data
@@ -58,16 +59,16 @@ def train(
     # now to train the model
     for epoch in range(num_epoch):
       # print(epoch)
+      train_metrics.reset()
+      val_metrics.reset()
 
       net.train()
       for data in train_data:
         # input the data
         img = data["image"].cuda()
-        trk = data["track"].cuda()
-
-        left_bev = data["bev_track_left"].cuda()
-
-        right_bev = data["bev_track_right"].cuda()
+        #trk = data["track"].cuda()
+        #left_bev = data["bev_track_left"].cuda()
+        #right_bev = data["bev_track_right"].cuda()
         way = data["waypoints"].cuda()
         way_mask = data["waypoints_mask"].cuda()
         # find the model
@@ -96,9 +97,9 @@ def train(
       for data in val_data:
         # input the data
         img = data["image"].cuda()
-        trk = data["track"].cuda()
-        left_bev = data["bev_track_left"].cuda()
-        right_bev = data["bev_track_right"].cuda()
+        #trk = data["track"].cuda()
+        #left_bev = data["bev_track_left"].cuda()
+        #right_bev = data["bev_track_right"].cuda()
         way = data["waypoints"].cuda()
         way_mask = data["waypoints_mask"].cuda()
         # find the model
@@ -107,11 +108,12 @@ def train(
           # print((net.predict(x = data) == label).float().mean())
           val_metrics.add(output, way, way_mask)
 
+      #log the mean val accuracy in logger
+      val_metrics2 = val_metrics.compute()
+      logger.add_scalar("val/accuracy-long", np.mean(val_metrics2["longitudinal_error"]), global_step=epoch)
+      print(np.mean(val_metrics2["longitudinal_error"]),np.mean(val_metrics2['lateral_error']))
+      logger.add_scalar("val/accuracy-lat", np.mean(val_metrics2['lateral_error']), global_step=epoch)
 
-        #log the mean val accuracy in logger
-        val_metrics2 = val_metrics.compute()
-        logger.add_scalar("val/accuracy-long", np.mean(val_metrics2["longitudinal_error"]), global_step=epoch)
-        logger.add_scalar("val/accuracy-lat", np.mean(val_metrics2['lateral_error']), global_step=epoch)
 
       logger.flush()
 
