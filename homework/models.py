@@ -89,10 +89,10 @@ class TransformerPlanner(nn.Module):
             self.self_att = torch.nn.MultiheadAttention(embed_dim, heads, batch_first=True)
             # then, we add an MLP
             self.mlp = torch.nn.Sequential(
-                torch.nn.Linear(embed_dim, 4 * embed_dim),
-                torch.nn.BatchNorm1d(embed_dim * 4),
+                torch.nn.Linear(embed_dim, 2 * embed_dim),
+                torch.nn.BatchNorm1d(embed_dim * 2),
                 torch.nn.ReLU(),
-                torch.nn.Linear(4 * embed_dim, embed_dim),
+                torch.nn.Linear(2 * embed_dim, embed_dim),
                 torch.nn.BatchNorm1d(embed_dim),
                 torch.nn.ReLU(),
             )
@@ -124,9 +124,8 @@ class TransformerPlanner(nn.Module):
 
         layers = nn.ModuleList()
         self.layers = torch.nn.Sequential(
-            *[self.TransformerLayer(n_track * 4, 5) for _ in range(d_model)],
-            *[self.TransformerLayer(n_track * 4, 8) for _ in range(d_model)],
-            *[self.TransformerLayer(n_track * 4, 10) for _ in range(d_model)]
+            *[self.TransformerLayer(n_track * 4, 4) for _ in range(d_model)],
+            *[self.TransformerLayer(n_track * 4, 4) for _ in range(d_model)],
         )
         self.layers.append(nn.Linear(4 * n_track, n_waypoints * 2))
 
@@ -134,29 +133,28 @@ class TransformerPlanner(nn.Module):
             self,
             bev_track_left: torch.Tensor,
             bev_track_right: torch.Tensor,
-            **kwargs,
-    ):
-        """
-        Predicts waypoints (b, n_waypoints, 2)
-        from the left (b, n_track) and right boundaries (b, n_track) of the track.
+            **kwargs,):
 
-        During test time, your model will be called with
-        model(bev_track_left=foo, bev_track_right=bar) with no other keyword arguments,
-        so make sure you are not assuming any additional inputs here.
+            """
+            Predicts waypoints (b, n_waypoints, 2)
+            from the left (b, n_track) and right boundaries (b, n_track) of the track.
 
-        Args:
-            bev_track_left (torch.Tensor): shape (b, n_track, 2)
-            bev_track_right (torch.Tensor): shape (b, n_track, 2)
+            During test time, your model will be called with
+            model(bev_track_left=foo, bev_track_right=bar) with no other keyword arguments,
+            so make sure you are not assuming any additional inputs here.
 
-        Returns:
-            torch.Tensor: future waypoints with shape (b, n_waypoints, 2)
-        """
-        x = torch.cat((bev_track_left, bev_track_right), dim=1).flatten(start_dim=1)  # concat to feed in
-        y = self.layers(x)
-        y2 = y.view(y.shape[0], self.n_waypoints, 2)  # reconfigure into the correct size
-        return y2
+            Args:
+                bev_track_left (torch.Tensor): shape (b, n_track, 2)
+                bev_track_right (torch.Tensor): shape (b, n_track, 2)
 
+            Returns:
+                torch.Tensor: future waypoints with shape (b, n_waypoints, 2)
+            """
+            x=torch.cat((bev_track_left, bev_track_right), dim=1).flatten(start_dim=1)  # concat to feed in
+            y = self.layers(x)
+            y2 = y.view(y.shape[0], self.n_waypoints, 2)  # reconfigure into the correct size
 
+            return y2
 class CNNPlanner(torch.nn.Module):
     class Block(nn.Module):
         def __init__(self, in_chan=3, out_chan=3):
