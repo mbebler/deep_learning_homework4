@@ -82,33 +82,31 @@ class MLPPlanner(nn.Module):
 
 
 class TransformerPlanner(nn.Module):
-    class TransformerLayer(torch.nn.Module):
-        def __init__(self, embed_dim, heads):
+    class SelfAttention(nn.Module):
+        def __init__(self, embed_dim, nheads):
             super().__init__()
-            # first we have the self attention
-            self.self_att = torch.nn.MultiheadAttention(embed_dim, heads, batch_first=True)
-            # then, we add an MLP
-            self.mlp = torch.nn.Sequential(
-                torch.nn.Linear(embed_dim, 2 * embed_dim),
-                torch.nn.BatchNorm1d(embed_dim * 2),
-                torch.nn.ReLU(),
-                torch.nn.Linear(2 * embed_dim, embed_dim),
-                torch.nn.BatchNorm1d(embed_dim),
-                torch.nn.ReLU(),
-            )
-            # then 2 normalizations
-            self.norm1 = torch.nn.LayerNorm(embed_dim)
-            self.norm2 = torch.nn.LayerNorm(embed_dim)
+            self.embed_dim = embed_dim
+            self.nheads = nheads
+            self.head_dim = embed_dim // nheads
 
-        def forward(self, x):
-            x_norm = self.norm1(
-                x)  # could add in a cross attention layer with encoder/decoder architecture but not absolutely necessary
-            x = x + self.self_att(x_norm, x_norm, x_norm)[
-                0]  # attention outputs layers + weights, but we only want the layer solution
-            x_norm2 = self.norm2(x)
-            x = x + self.mlp(x_norm2)
-            return x
+            self.values = nn.Linear(self.head_dim, self.head_dim)
+            self.keys = nn.Linear(self.head_dim, self.head_dim)
+            self.query = nn.Linear(self.head_dim, self.head_dim)
+            self.fc_out = nn.Linear(self.head_dim*nheads, embed_dim)
 
+        def forward(self, values, keys, queries) -> torch.Tensor:
+            N = queries.shape[0] #batch size
+            value_len, key_len, query_len = values.shape[1], keys.shape[1], queries.shape[1]
+            values = values.reshape(N, value_len, self.heads, self.head_dim)
+            keys = keys.reshape(N, key_len, self.heads, self.head_dim)
+            queries = queries.reshape(N, query_len, self.heads, self.head_dim)
+
+            energy = torch.einsum("nqhd,nkhd -> nhqk", [queries, keys])
+
+            attention = torch.softmax(energy / (self.embed_dim ** 0.5), dim=-1) #normalizing along key length
+            out = torch.einsum("nhql, nlhd -> nhqd", [attention, values]).reshape(N, query_len, self.nheads*self.head_dim)
+            out = self.fc_out(out)
+            return out
     def __init__(
             self,
             n_track: int = 10,
@@ -116,18 +114,19 @@ class TransformerPlanner(nn.Module):
             d_model: int = 64,
     ):
         super().__init__()
-
+        forward = 2
+        self.attention = self.SelfAttention(d_model, nheads=8)
+        self.norm1= nn.LayerNorm(d_model)
+        self.norm2= nn.LayerNorm(d_model)
+        #feed forward
+        self.ff = nn.Sequential(
+            nn.Linear(d_model, forward*d_model),
+            nn.ReLU(),
+            nn.Linear(forward*d_model, d_model)
+        )
+        self.dropout = nn.Dropout(0.5)
         self.n_track = n_track
         self.n_waypoints = n_waypoints
-
-        # using the basic model from week 6 lectures
-
-        layers = nn.ModuleList()
-        self.layers = torch.nn.Sequential(
-            *[self.TransformerLayer(n_track * 4, 4) for _ in range(d_model)],
-            *[self.TransformerLayer(n_track * 4, 4) for _ in range(d_model)],
-        )
-        self.layers.append(nn.Linear(4 * n_track, n_waypoints * 2))
 
     def forward(
             self,
@@ -151,10 +150,12 @@ class TransformerPlanner(nn.Module):
                 torch.Tensor: future waypoints with shape (b, n_waypoints, 2)
             """
             x=torch.cat((bev_track_left, bev_track_right), dim=1).flatten(start_dim=1)  # concat to feed in
-            y = self.layers(x)
-            y2 = y.view(y.shape[0], self.n_waypoints, 2)  # reconfigure into the correct size
-
-            return y2
+            attention = self.attention(x,x,x)
+            y = self.dropout(self.norm1(attention + x))
+            forward = self.ff(y)
+            out = self.dropout(self.norm2(forward+y))
+            print(out.shape)
+            return out
 class CNNPlanner(torch.nn.Module):
     class Block(nn.Module):
         def __init__(self, in_chan=3, out_chan=3):
