@@ -107,6 +107,29 @@ class TransformerPlanner(nn.Module):
             out = torch.einsum("nhql, nlhd -> nhqd", [attention, values]).reshape(N, query_len, self.nheads*self.head_dim)
             out = self.fc_out(out)
             return out
+
+    class TransformerBlock(nn.Module):
+        def __init__(self, embed_dim, heads):
+            super().__init__()
+            dropout = 0.5
+            forward = 2
+            self.attention = self.SelfAttention(embed_dim, heads)
+            self.norm1 = nn.LayerNorm(embed_dim)
+            self.norm2 = nn.LayerNorm(embed_dim)
+            self.ff = nn.Sequential(
+                nn.Linear(embed_dim, forward*embed_dim),
+                nn.ReLU(),
+                nn.Linear(forward*embed_dim, embed_dim),
+            )
+            self.dropout = nn.Dropout(dropout)
+
+        def forward(self, x):
+            attention = self.attention(x,x,x)
+            x = self.dropout(self.norm1(attention + x))
+            forward = self.ff(x)
+            out = self.dropout(self.norm2(forward + x))
+            return out
+
     def __init__(
             self,
             n_track: int = 10,
@@ -114,19 +137,14 @@ class TransformerPlanner(nn.Module):
             d_model: int = 64,
     ):
         super().__init__()
-        forward = 2
-        self.attention = self.SelfAttention(d_model, nheads=8)
-        self.norm1= nn.LayerNorm(d_model)
-        self.norm2= nn.LayerNorm(d_model)
-        #feed forward
-        self.ff = nn.Sequential(
-            nn.Linear(d_model, forward*d_model),
-            nn.ReLU(),
-            nn.Linear(forward*d_model, d_model)
+        self.embed_size = d_model
+        self.embedding = nn.Embedding(1280, self.embed_size) #32*40 (batch * 2 * n_track)
+        self.layers = nn.ModuleList(
+            [
+                self.TransformerBlock(self.embed_size, heads = 8)
+            ]
         )
         self.dropout = nn.Dropout(0.5)
-        self.n_track = n_track
-        self.n_waypoints = n_waypoints
 
     def forward(
             self,
@@ -150,11 +168,10 @@ class TransformerPlanner(nn.Module):
                 torch.Tensor: future waypoints with shape (b, n_waypoints, 2)
             """
             x=torch.cat((bev_track_left, bev_track_right), dim=1).flatten(start_dim=1)  # concat to feed in
-            attention = self.attention(x,x,x)
-            y = self.dropout(self.norm1(attention + x))
-            forward = self.ff(y)
-            out = self.dropout(self.norm2(forward+y))
-            print(out.shape)
+
+            out = self.dropout(self.embedding(x))
+            for layer in self.layers:
+                out = layer(out)
             return out
 class CNNPlanner(torch.nn.Module):
     class Block(nn.Module):
